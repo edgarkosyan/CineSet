@@ -10,10 +10,15 @@ import Foundation
 
 @MainActor
 final class CSHomeViewModel: ObservableObject {
-    private let router: CSNavigationRouting
+    @Published private(set) var lastSetup: CineSetSetup?
 
-    init(router: CSNavigationRouting) {
+    private let router: CSNavigationRouting
+    private let settings: CSAppSettingsStoring
+
+    init(router: CSNavigationRouting, settings: CSAppSettingsStoring) {
         self.router = router
+        self.settings = settings
+        reloadLastSetup()
     }
 
     func didTapStartCamera() {
@@ -22,5 +27,9 @@ final class CSHomeViewModel: ObservableObject {
 
     func didTapSettings() {
         router.showSettings()
+    }
+
+    func reloadLastSetup() {
+        lastSetup = settings.lastSetup
     }
 }

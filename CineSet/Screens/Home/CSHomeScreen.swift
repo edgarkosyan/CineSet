@@ -93,14 +93,23 @@ struct CSHomeScreen: View {
         VStack(alignment: .leading, spacing: 12) {
             sectionTitle("Last Setup")
 
-            HStack {
-                settingBlock(title: "ND", value: "32")
-                settingBlock(title: "FPS", value: "24")
-                settingBlock(title: "Shutter", value: "1/50")
-                settingBlock(title: "ISO", value: "100")
+            if let lastSetup = viewModel.lastSetup {
+                HStack {
+                    settingBlock(title: "ND", value: lastSetup.ndDisplayTitle)
+                    settingBlock(title: "FPS", value: "\(lastSetup.fps)")
+                    settingBlock(title: "Shutter", value: lastSetup.shutterDisplayTitle)
+                    settingBlock(title: "ISO", value: lastSetup.isoDisplayTitle)
+                }
+                .padding(16)
+                .background(cardBackground(cornerRadius: 20))
+            } else {
+                Text("No camera setup yet")
+                    .font(.subheadline)
+                    .foregroundStyle(Color.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(16)
+                    .background(cardBackground(cornerRadius: 20))
             }
-            .padding(16)
-            .background(cardBackground(cornerRadius: 20))
         }
     }
 

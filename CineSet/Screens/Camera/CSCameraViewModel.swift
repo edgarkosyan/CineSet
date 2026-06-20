@@ -161,6 +161,24 @@ final class CSCameraViewModel: ObservableObject {
         isSettingsPresented = true
     }
 
+    var setupSnapshot: CineSetSetup {
+        CineSetSetup(
+            ndFilterTitle: selectedNDFilter.title,
+            fps: selectedFPS,
+            shutter: selectedShutter,
+            iso: selectedISO
+        )
+    }
+
+    func applySetup(_ setup: CineSetSetup) {
+        if let filter = setup.ndFilter {
+            selectedNDFilter = filter
+        }
+        selectedFPS = setup.fps
+        selectedShutter = setup.shutter
+        selectedISO = setup.iso
+    }
+
     private func applyNDSimulation() {
         guard !isSyncingSettings else { return }
 
