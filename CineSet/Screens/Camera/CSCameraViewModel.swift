@@ -34,12 +34,18 @@ final class CSCameraViewModel: ObservableObject {
     }
 
     @Published var selectedShutter: Int = 50 {
-        didSet { applyManualControls() }
+        didSet { applyNDSimulation() }
     }
 
     @Published var selectedISO: Float = 100 {
-        didSet { applyManualControls() }
+        didSet { applyNDSimulation() }
     }
+
+    @Published var selectedNDFilter: NDFilter = .clear {
+        didSet { applyNDSimulation() }
+    }
+
+    @Published private(set) var ndOverlayOpacity: Double = 0
 
     @Published var exposureMode: CSCameraControlMode = .manual {
         didSet { applyManualControls() }
@@ -80,6 +86,8 @@ final class CSCameraViewModel: ObservableObject {
 
     let cameraService: CSCameraVideoSessionServicing
 
+    private var appliedShutter: Int = 50
+    private var appliedISO: Float = 100
     private var isSyncingSettings = false
     private var focusIndicatorTask: Task<Void, Never>?
 
@@ -139,6 +147,24 @@ final class CSCameraViewModel: ObservableObject {
         }
     }
 
+    private func applyNDSimulation() {
+        guard !isSyncingSettings else { return }
+
+        let result = NDExposureSimulator.simulate(
+            baseShutter: selectedShutter,
+            baseISO: selectedISO,
+            ndStops: selectedNDFilter.stops,
+            shutterOptions: shutterOptions,
+            isoOptions: isoOptions
+        )
+
+        appliedShutter = result.appliedShutter
+        appliedISO = result.appliedISO
+        ndOverlayOpacity = result.overlayOpacity
+
+        applyManualControls()
+    }
+
     private func applyManualControls() {
         guard !isSyncingSettings else { return }
         cameraService.updateManualControls(currentSettings)
@@ -148,8 +174,8 @@ final class CSCameraViewModel: ObservableObject {
         CSCameraAppliedSettings(
             resolution: selectedResolution,
             fps: selectedFPS,
-            shutter: selectedShutter,
-            iso: selectedISO,
+            shutter: appliedShutter,
+            iso: appliedISO,
             manualControls: CSCameraManualControls(
                 exposureMode: exposureMode,
                 whiteBalanceMode: whiteBalanceMode,
@@ -164,7 +190,6 @@ final class CSCameraViewModel: ObservableObject {
 
     private func applyCapabilities(_ capabilities: CSCameraCapabilities, applied: CSCameraAppliedSettings) {
         isSyncingSettings = true
-        defer { isSyncingSettings = false }
 
         resolutionOptions = capabilities.resolutionOptions
         fpsOptions = capabilities.fpsOptions
@@ -175,8 +200,11 @@ final class CSCameraViewModel: ObservableObject {
 
         selectedResolution = applied.resolution
         selectedFPS = applied.fps
-        selectedShutter = applied.shutter
-        selectedISO = applied.iso
+
+        if selectedNDFilter.stops == 0 {
+            selectedShutter = applied.shutter
+            selectedISO = applied.iso
+        }
 
         exposureMode = applied.manualControls.exposureMode
         whiteBalanceMode = applied.manualControls.whiteBalanceMode
@@ -185,5 +213,8 @@ final class CSCameraViewModel: ObservableObject {
         isHDRAutoAdjustmentEnabled = applied.manualControls.isHDRAutoAdjustmentEnabled
         isLowLightBoostEnabled = applied.manualControls.isLowLightBoostEnabled
         focusMode = applied.manualControls.focusMode
+
+        isSyncingSettings = false
+        applyNDSimulation()
     }
 }

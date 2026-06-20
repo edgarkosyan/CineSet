@@ -11,7 +11,6 @@ struct CSCameraScreen: View {
     @StateObject var viewModel: CSCameraViewModel = CSCameraViewModel()
     @State private var isSettingsPresented = false
     @Environment(\.openURL) private var openURL
-
     var body: some View {
         ZStack {
             CameraPreviewView(
@@ -22,12 +21,29 @@ struct CSCameraScreen: View {
             )
             .ignoresSafeArea()
 
+            if viewModel.ndOverlayOpacity > 0 {
+                Color.black
+                    .opacity(viewModel.ndOverlayOpacity)
+                    .blendMode(.multiply)
+                    .allowsHitTesting(false)
+                    .ignoresSafeArea()
+            }
+
             if let focusPoint = viewModel.focusIndicatorPoint {
                 CSCameraFocusReticle()
                     .position(focusPoint)
                     .allowsHitTesting(false)
                     .transition(.opacity)
                     .animation(.easeOut(duration: 0.2), value: focusPoint)
+            }
+            HStack {
+                NDFilterSelectorView(
+                    filters: NDFilter.presets,
+                    selectedFilter: $viewModel.selectedNDFilter
+                )
+                .padding(.leading, 16)
+                
+                Spacer()
             }
 
             VStack {
@@ -106,6 +122,7 @@ struct CSCameraScreen: View {
 
     private var bottomInfoPanel: some View {
         HStack {
+            settingItem(title: "ND", value: viewModel.selectedNDFilter.hudTitle)
             settingItem(title: "Res", value: viewModel.selectedResolution.title)
             settingItem(title: "FPS", value: "\(viewModel.selectedFPS)")
             settingItem(title: "Shutter", value: "1/\(viewModel.selectedShutter)")
