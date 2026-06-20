@@ -143,5 +143,5 @@ struct CSCameraSettingsSheet: View {
 }
 
 #Preview {
-    CSCameraSettingsSheet(viewModel: .init())
+    CSCameraSettingsSheet(viewModel: AppContainer.previewCameraViewModel())
 }

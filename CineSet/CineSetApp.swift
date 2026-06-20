@@ -11,7 +11,7 @@ import SwiftUI
 struct CineSetApp: App {
     var body: some Scene {
         WindowGroup {
-            CSHomeScreen()
+            CSRootView()
         }
     }
 }

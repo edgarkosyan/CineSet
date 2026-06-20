@@ -8,31 +8,36 @@
 import SwiftUI
 
 struct CSHomeScreen: View {
+    @StateObject private var viewModel: CSHomeViewModel
+
+    init(viewModel: CSHomeViewModel) {
+        _viewModel = StateObject(wrappedValue: viewModel)
+    }
+
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Color.background
-                    .ignoresSafeArea()
+        ZStack {
+            Color.background
+                .ignoresSafeArea()
 
-                ScrollView(showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 24) {
-                        headerView
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 24) {
+                    headerView
 
-                        startCameraCard
+                    startCameraCard
 
-                        lastSetupCard
+                    lastSetupCard
 
-                        presetsSection
+                    presetsSection
 
-                        toolsSection
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 16)
-                    .padding(.bottom, 32)
+                    toolsSection
                 }
+                .padding(.horizontal, 20)
+                .padding(.top, 16)
+                .padding(.bottom, 32)
             }
         }
     }
+
     private var headerView: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
@@ -48,7 +53,7 @@ struct CSHomeScreen: View {
             Spacer()
 
             Button {
-                // Open settings
+                viewModel.didTapSettings()
             } label: {
                 Image(systemName: "gearshape")
                     .font(.title3)
@@ -62,7 +67,7 @@ struct CSHomeScreen: View {
 
     private var startCameraCard: some View {
         Button {
-            // Open camera
+            viewModel.didTapStartCamera()
         } label: {
             VStack(spacing: 12) {
                 Image(systemName: "camera.viewfinder")
@@ -120,7 +125,9 @@ struct CSHomeScreen: View {
             VStack(spacing: 10) {
                 toolRow(title: "Find ND Filter", icon: "circle.grid.2x2")
                 toolRow(title: "Camera Profiles", icon: "camera.aperture")
-                toolRow(title: "Settings", icon: "slider.horizontal.3")
+                toolRow(title: "Settings", icon: "slider.horizontal.3") {
+                    viewModel.didTapSettings()
+                }
             }
         }
     }
@@ -163,10 +170,8 @@ struct CSHomeScreen: View {
         .background(cardBackground(cornerRadius: 20))
     }
 
-    private func toolRow(title: String, icon: String) -> some View {
-        Button {
-            // Open tool
-        } label: {
+    private func toolRow(title: String, icon: String, action: @escaping () -> Void = {}) -> some View {
+        Button(action: action) {
             HStack(spacing: 14) {
                 Image(systemName: icon)
                     .foregroundStyle(Color.accent)
@@ -196,9 +201,8 @@ struct CSHomeScreen: View {
                     .stroke(Color.cardBorder, lineWidth: 1)
             }
     }
-
 }
 
 #Preview {
-    CSHomeScreen()
+    CSHomeScreen(viewModel: AppContainer().makeHomeViewModel())
 }

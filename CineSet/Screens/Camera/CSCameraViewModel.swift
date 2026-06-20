@@ -83,16 +83,22 @@ final class CSCameraViewModel: ObservableObject {
     @Published private(set) var supportsLowLightBoost = false
     @Published private(set) var areCapabilitiesLoaded = false
     @Published var focusIndicatorPoint: CGPoint?
+    @Published var isSettingsPresented = false
 
     let cameraService: CSCameraVideoSessionServicing
 
+    private let router: CSNavigationRouting
     private var appliedShutter: Int = 50
     private var appliedISO: Float = 100
     private var isSyncingSettings = false
     private var focusIndicatorTask: Task<Void, Never>?
 
-    init(cameraService: CSCameraVideoSessionServicing = CSCameraVideoSessionService()) {
+    init(
+        cameraService: CSCameraVideoSessionServicing,
+        router: CSNavigationRouting
+    ) {
         self.cameraService = cameraService
+        self.router = router
     }
 
     var isExposureManual: Bool {
@@ -145,6 +151,14 @@ final class CSCameraViewModel: ObservableObject {
             guard !Task.isCancelled else { return }
             focusIndicatorPoint = nil
         }
+    }
+
+    func didTapClose() {
+        router.dismissPresentedRoute()
+    }
+
+    func didTapCameraSettings() {
+        isSettingsPresented = true
     }
 
     private func applyNDSimulation() {

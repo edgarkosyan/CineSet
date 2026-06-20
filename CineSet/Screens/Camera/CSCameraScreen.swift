@@ -8,9 +8,13 @@
 import SwiftUI
 
 struct CSCameraScreen: View {
-    @StateObject var viewModel: CSCameraViewModel = CSCameraViewModel()
-    @State private var isSettingsPresented = false
+    @StateObject private var viewModel: CSCameraViewModel
     @Environment(\.openURL) private var openURL
+
+    init(viewModel: CSCameraViewModel) {
+        _viewModel = StateObject(wrappedValue: viewModel)
+    }
+
     var body: some View {
         ZStack {
             CameraPreviewView(
@@ -42,7 +46,7 @@ struct CSCameraScreen: View {
                     selectedFilter: $viewModel.selectedNDFilter
                 )
                 .padding(.leading, 16)
-                
+
                 Spacer()
             }
 
@@ -67,7 +71,7 @@ struct CSCameraScreen: View {
         .onDisappear {
             viewModel.stopCamera()
         }
-        .sheet(isPresented: $isSettingsPresented) {
+        .sheet(isPresented: $viewModel.isSettingsPresented) {
             CSCameraSettingsSheet(viewModel: viewModel)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
@@ -104,10 +108,21 @@ struct CSCameraScreen: View {
 
     private var topBar: some View {
         HStack {
+            Button {
+                viewModel.didTapClose()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.title3.bold())
+                    .foregroundStyle(.white)
+                    .padding(12)
+                    .background(.black.opacity(0.45))
+                    .clipShape(Circle())
+            }
+
             Spacer()
 
             Button {
-                isSettingsPresented = true
+                viewModel.didTapCameraSettings()
             } label: {
                 Image(systemName: "gearshape.fill")
                     .font(.title2)
@@ -149,5 +164,5 @@ struct CSCameraScreen: View {
 }
 
 #Preview {
-    CSCameraScreen()
+    CSCameraScreen(viewModel: AppContainer.previewCameraViewModel())
 }
