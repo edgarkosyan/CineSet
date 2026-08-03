@@ -25,15 +25,15 @@ struct CSCameraScreen: View {
             )
             .ignoresSafeArea()
 
-            if viewModel.ndOverlayOpacity > 0 {
+            if viewModel.viewData.derived.ndOverlayOpacity > 0 {
                 Color.black
-                    .opacity(viewModel.ndOverlayOpacity)
+                    .opacity(viewModel.viewData.derived.ndOverlayOpacity)
                     .blendMode(.multiply)
                     .allowsHitTesting(false)
                     .ignoresSafeArea()
             }
 
-            if let focusPoint = viewModel.focusIndicatorPoint {
+            if let focusPoint = viewModel.viewData.chrome.focusIndicatorPoint {
                 CSCameraFocusReticle()
                     .position(focusPoint)
                     .allowsHitTesting(false)
@@ -43,7 +43,7 @@ struct CSCameraScreen: View {
             HStack {
                 NDFilterSelectorView(
                     filters: NDFilter.presets,
-                    selectedFilter: $viewModel.selectedNDFilter
+                    selectedFilter: viewModel.settingBinding(\.user.ndFilter, send: CSCameraSettingsChange.ndFilter)
                 )
                 .padding(.leading, 16)
 
@@ -61,7 +61,7 @@ struct CSCameraScreen: View {
             }
             .padding()
 
-            if viewModel.authorizationState == .denied {
+            if viewModel.viewData.chrome.authorization == .denied {
                 cameraAccessDeniedOverlay
             }
         }
@@ -71,7 +71,7 @@ struct CSCameraScreen: View {
         .onDisappear {
             viewModel.stopCamera()
         }
-        .sheet(isPresented: $viewModel.isSettingsPresented) {
+        .sheet(isPresented: viewModel.settingsSheetPresented) {
             CSCameraSettingsSheet(viewModel: viewModel)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
@@ -87,15 +87,15 @@ struct CSCameraScreen: View {
                 Image(systemName: "camera.fill")
                     .font(.largeTitle)
 
-                Text("Camera Access Required")
+                Text(viewModel.labels.error.cameraAccessTitle)
                     .font(.title3.bold())
 
-                Text("Allow camera access in Settings to use CineSet.")
+                Text(viewModel.labels.error.cameraAccessBody)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
 
-                Button("Open Settings") {
+                Button(viewModel.labels.error.openSettings) {
                     guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
                     openURL(url)
                 }
@@ -131,22 +131,28 @@ struct CSCameraScreen: View {
                     .background(.black.opacity(0.45))
                     .clipShape(Circle())
             }
-            .disabled(viewModel.authorizationState != .authorized)
+            .disabled(viewModel.viewData.chrome.authorization != .authorized)
         }
     }
 
     private var bottomInfoPanel: some View {
         HStack {
-            settingItem(title: "ND", value: viewModel.selectedNDFilter.hudTitle)
-            settingItem(title: "Res", value: viewModel.selectedResolution.title)
-            settingItem(title: "FPS", value: "\(viewModel.selectedFPS)")
-            settingItem(title: "Shutter", value: "1/\(viewModel.selectedShutter)")
-            settingItem(title: "ISO", value: "\(Int(viewModel.selectedISO))")
+            settingItem(title: viewModel.labels.hud.nd, value: viewModel.viewData.user.ndFilter.hudTitle)
+            settingItem(title: viewModel.labels.hud.resolution, value: viewModel.viewData.user.resolution.title)
+            settingItem(title: viewModel.labels.hud.fps, value: "\(viewModel.viewData.user.fps)")
+            settingItem(
+                title: viewModel.labels.hud.shutter,
+                value: viewModel.labels.withArguments(
+                    keyPath: \.hud.shutterValueFormat,
+                    viewModel.viewData.user.shutter
+                )
+            )
+            settingItem(title: viewModel.labels.hud.iso, value: "\(Int(viewModel.viewData.user.iso))")
         }
         .padding()
         .background(.black.opacity(0.45))
         .clipShape(RoundedRectangle(cornerRadius: 20))
-        .opacity(viewModel.authorizationState == .authorized ? 1 : 0)
+        .opacity(viewModel.viewData.chrome.authorization == .authorized ? 1 : 0)
     }
 
     private func settingItem(title: String, value: String) -> some View {
