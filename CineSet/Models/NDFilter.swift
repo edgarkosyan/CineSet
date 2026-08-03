@@ -30,69 +30,104 @@ struct NDFilter: Identifiable, Equatable, Hashable {
     }
 }
 
-struct NDExposureResult: Equatable {
-    let appliedShutter: Int
-    let appliedISO: Float
-    let overlayOpacity: Double
+enum NDMatchState: Equatable {
+    case notRequired
+    case insufficient(missingStops: Float)
+    case matched
+    case stronger(extraStops: Float)
 }
 
-enum NDExposureSimulator {
-    static func simulate(
-        baseShutter: Int,
-        baseISO: Float,
-        ndStops: Float,
-        shutterOptions: [Int],
-        isoOptions: [Float]
-    ) -> NDExposureResult {
-        guard ndStops > 0, baseShutter > 0, baseISO > 0 else {
-            return NDExposureResult(
-                appliedShutter: baseShutter,
-                appliedISO: baseISO,
-                overlayOpacity: 0
-            )
+/// Planning result comparing scene-metered exposure, target cinematic settings, and selected ND.
+struct NDExposurePlan: Equatable {
+    let meteredShutter: Int
+    let meteredISO: Float
+    let targetShutter: Int
+    let targetISO: Float
+    let requiredNDStops: Float
+    let selectedNDStops: Float
+    let differenceStops: Float
+    let matchState: NDMatchState
+}
+
+enum NDExposurePlanner {
+    /// Approximate stop tolerance for matched / insufficient / stronger classification.
+    static let stopTolerance: Float = 0.5
+
+    static func plan(
+        meteredShutter: Int,
+        meteredISO: Float,
+        targetShutter: Int,
+        targetISO: Float,
+        selectedNDStops: Float
+    ) -> NDExposurePlan {
+        let required = requiredNDStops(
+            meteredShutter: meteredShutter,
+            meteredISO: meteredISO,
+            targetShutter: targetShutter,
+            targetISO: targetISO
+        )
+        let selected = max(selectedNDStops, 0)
+        let difference = selected - required
+
+        return NDExposurePlan(
+            meteredShutter: meteredShutter,
+            meteredISO: meteredISO,
+            targetShutter: targetShutter,
+            targetISO: targetISO,
+            requiredNDStops: required,
+            selectedNDStops: selected,
+            differenceStops: difference,
+            matchState: matchState(requiredNDStops: required, selectedNDStops: selected)
+        )
+    }
+
+    /// Stops of ND required so target settings match metered scene brightness.
+    static func requiredNDStops(
+        meteredShutter: Int,
+        meteredISO: Float,
+        targetShutter: Int,
+        targetISO: Float
+    ) -> Float {
+        guard
+            meteredShutter > 0,
+            meteredISO.isFinite,
+            meteredISO > 0,
+            targetShutter > 0,
+            targetISO.isFinite,
+            targetISO > 0
+        else {
+            return 0
         }
 
-        let factor = pow(2.0, ndStops)
-        let idealShutter = Int(round(Float(baseShutter) * factor))
-        let idealISO = baseISO / Float(factor)
-
-        let appliedShutter = nearestShutter(
-            ideal: idealShutter,
-            in: shutterOptions,
-            base: baseShutter,
-            fallback: idealShutter
-        )
-        let appliedISO = nearestISO(
-            ideal: idealISO,
-            in: isoOptions,
-            base: baseISO,
-            fallback: idealISO
-        )
-
-        let shutterStops = log2(max(Float(appliedShutter) / Float(baseShutter), 1))
-        let isoStops = log2(max(baseISO / appliedISO, 1))
-        let achievedStops = shutterStops + isoStops
-        let remainingStops = max(ndStops - achievedStops, 0)
-        let overlayOpacity = remainingStops > 0 ? 1 - pow(0.5, Double(remainingStops)) : 0
-
-        return NDExposureResult(
-            appliedShutter: appliedShutter,
-            appliedISO: appliedISO,
-            overlayOpacity: overlayOpacity
-        )
+        let shutterStops = log2(Float(meteredShutter) / Float(targetShutter))
+        let isoStops = log2(targetISO / meteredISO)
+        return max(shutterStops + isoStops, 0)
     }
 
-    private static func nearestShutter(ideal: Int, in options: [Int], base: Int, fallback: Int) -> Int {
-        guard !options.isEmpty else { return fallback }
-        let darkerOptions = options.filter { $0 >= base }
-        let pool = darkerOptions.isEmpty ? options : darkerOptions
-        return pool.min(by: { abs($0 - ideal) < abs($1 - ideal) }) ?? fallback
+    static func matchState(requiredNDStops: Float, selectedNDStops: Float) -> NDMatchState {
+        guard requiredNDStops > stopTolerance else {
+            return .notRequired
+        }
+
+        let difference = selectedNDStops - requiredNDStops
+
+        if difference < -stopTolerance {
+            return .insufficient(missingStops: abs(difference))
+        }
+
+        if abs(difference) <= stopTolerance {
+            return .matched
+        }
+
+        return .stronger(extraStops: difference)
     }
 
-    private static func nearestISO(ideal: Float, in options: [Float], base: Float, fallback: Float) -> Float {
-        guard !options.isEmpty else { return fallback }
-        let darkerOptions = options.filter { $0 <= base }
-        let pool = darkerOptions.isEmpty ? options : darkerOptions
-        return pool.min(by: { abs($0 - ideal) < abs($1 - ideal) }) ?? fallback
+    /// Cosmetic preview adjustment from residual ND (required − selected), capped to keep preview usable.
+    static func previewBrightnessAdjustment(
+        requiredNDStops: Float,
+        selectedNDStops: Float
+    ) -> Double {
+        let residualStops = requiredNDStops - selectedNDStops
+        return min(max(Double(residualStops) * 0.07, -0.35), 0.35)
     }
 }

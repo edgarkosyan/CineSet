@@ -53,34 +53,37 @@ struct CSCameraSettingsSheet: View {
     }
 
     private var exposureSection: some View {
-        Section("Exposure") {
-            Picker("Mode", selection: $viewModel.exposureMode) {
-                ForEach(CSCameraControlMode.allCases) { mode in
-                    Text(mode.title).tag(mode)
+        Section {
+            Picker("Target Shutter", selection: $viewModel.selectedShutter) {
+                ForEach(viewModel.shutterOptions, id: \.self) { shutter in
+                    Text("1/\(shutter)")
+                        .tag(shutter)
                 }
             }
-            .pickerStyle(.segmented)
 
-            if viewModel.isExposureManual {
-                Picker("Shutter", selection: $viewModel.selectedShutter) {
-                    ForEach(viewModel.shutterOptions, id: \.self) { shutter in
-                        Text("1/\(shutter)")
-                            .tag(shutter)
-                    }
+            Picker("Target ISO", selection: $viewModel.selectedISO) {
+                ForEach(viewModel.isoOptions, id: \.self) { iso in
+                    Text("\(Int(iso))")
+                        .tag(iso)
                 }
-
-                Picker("ISO", selection: $viewModel.selectedISO) {
-                    ForEach(viewModel.isoOptions, id: \.self) { iso in
-                        Text("\(Int(iso))")
-                            .tag(iso)
-                    }
-                }
-            } else {
-                Text("Shutter and ISO are controlled automatically.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("Target Exposure")
+        } footer: {
+            if viewModel.areCapabilitiesLoaded {
+                Text(
+                    "Metered: 1/\(viewModel.sceneMeteredShutter) · ISO \(Int(viewModel.sceneMeteredISO)). " +
+                    "Required ND: \(formattedStops(viewModel.requiredNDStops)) stops. " +
+                    viewModel.ndMatchStatusText + "."
+                )
             }
         }
+    }
+
+    private func formattedStops(_ stops: Float) -> String {
+        abs(stops.rounded() - stops) < 0.05
+            ? String(format: "%.0f", stops)
+            : String(format: "%.1f", stops)
     }
 
     private var whiteBalanceSection: some View {

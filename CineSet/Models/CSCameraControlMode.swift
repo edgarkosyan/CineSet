@@ -22,7 +22,7 @@ enum CSCameraControlMode: String, CaseIterable, Identifiable, Sendable {
 }
 
 struct CSCameraManualControls: Sendable, Equatable {
-    var exposureMode: CSCameraControlMode = .manual
+    var exposureMode: CSCameraControlMode = .auto
     var whiteBalanceMode: CSCameraControlMode = .auto
     var whiteBalanceTemperature: Float = 5_500
     var whiteBalanceTint: Float = 0

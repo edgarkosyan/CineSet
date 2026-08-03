@@ -23,15 +23,9 @@ struct CSCameraScreen: View {
                     viewModel.focus(at: viewPoint, devicePoint: devicePoint)
                 }
             )
+            .brightness(viewModel.ndPreviewBrightness)
+            .animation(.easeOut(duration: 0.2), value: viewModel.ndPreviewBrightness)
             .ignoresSafeArea()
-
-            if viewModel.ndOverlayOpacity > 0 {
-                Color.black
-                    .opacity(viewModel.ndOverlayOpacity)
-                    .blendMode(.multiply)
-                    .allowsHitTesting(false)
-                    .ignoresSafeArea()
-            }
 
             if let focusPoint = viewModel.focusIndicatorPoint {
                 CSCameraFocusReticle()
@@ -136,12 +130,19 @@ struct CSCameraScreen: View {
     }
 
     private var bottomInfoPanel: some View {
-        HStack {
-            settingItem(title: "ND", value: viewModel.selectedNDFilter.hudTitle)
-            settingItem(title: "Res", value: viewModel.selectedResolution.title)
-            settingItem(title: "FPS", value: "\(viewModel.selectedFPS)")
-            settingItem(title: "Shutter", value: "1/\(viewModel.selectedShutter)")
-            settingItem(title: "ISO", value: "\(Int(viewModel.selectedISO))")
+        VStack(spacing: 8) {
+            HStack {
+                settingItem(title: "ND", value: viewModel.ndFilterDisplayValue)
+                settingItem(title: "Res", value: viewModel.selectedResolution.title)
+                settingItem(title: "FPS", value: "\(viewModel.selectedFPS)")
+                settingItem(title: "Shutter", value: "1/\(viewModel.selectedShutter)")
+                settingItem(title: "ISO", value: "\(Int(viewModel.selectedISO))")
+            }
+
+            Text(viewModel.ndMatchStatusText)
+                .font(.caption2)
+                .foregroundStyle(.white.opacity(0.75))
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding()
         .background(.black.opacity(0.45))

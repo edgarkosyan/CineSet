@@ -19,6 +19,30 @@ struct CSHomeScreen: View {
             Color.background
                 .ignoresSafeArea()
 
+            LinearGradient(
+                colors: [
+                    .white.opacity(0.01),
+                    .clear,
+                    .white.opacity(0.008)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .blur(radius: 80)
+            .ignoresSafeArea()
+
+            Circle()
+                .fill(.white.opacity(0.015))
+                .frame(width: 260, height: 260)
+                .blur(radius: 70)
+                .offset(x: -60, y: 80)
+
+            Circle()
+                .fill(.white.opacity(0.012))
+                .frame(width: 180, height: 180)
+                .blur(radius: 50)
+                .offset(x: 140, y: 420)
+
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 24) {
                     headerView
@@ -72,7 +96,7 @@ struct CSHomeScreen: View {
             VStack(spacing: 12) {
                 Image(systemName: "camera.viewfinder")
                     .font(.system(size: 38, weight: .semibold))
-                    .foregroundStyle(Color.accent)
+                    .foregroundStyle(.white)
 
                 Text("Start Camera")
                     .font(.title2.bold())
@@ -84,7 +108,30 @@ struct CSHomeScreen: View {
             }
             .frame(maxWidth: .infinity)
             .frame(height: 190)
-            .background(cardBackground(cornerRadius: 28))
+            .glassEffect(
+                .regular.tint(.black.opacity(0.6)).interactive(),
+                in: .rect(cornerRadius: 28)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .fill(.black.opacity(0.1))
+                    .allowsHitTesting(false)
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                .white.opacity(0.35),
+                                .white.opacity(0.08),
+                                .white.opacity(0.04)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        lineWidth: 0.75
+                    )
+            }
         }
         .buttonStyle(.plain)
     }

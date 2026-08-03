@@ -30,26 +30,27 @@ final class CSCameraViewModel: ObservableObject {
         didSet {
             guard !isSyncingSettings else { return }
             cameraService.updateFPS(selectedFPS, resolution: selectedResolution)
+            updateExposurePlan()
         }
     }
 
     @Published var selectedShutter: Int = 50 {
-        didSet { applyNDSimulation() }
+        didSet { updateExposurePlan() }
     }
 
     @Published var selectedISO: Float = 100 {
-        didSet { applyNDSimulation() }
+        didSet { updateExposurePlan() }
     }
 
     @Published var selectedNDFilter: NDFilter = .clear {
-        didSet { applyNDSimulation() }
+        didSet { updateExposurePlan() }
     }
 
-    @Published private(set) var ndOverlayOpacity: Double = 0
-
-    @Published var exposureMode: CSCameraControlMode = .manual {
-        didSet { applyManualControls() }
-    }
+    @Published private(set) var sceneMeteredShutter: Int = 50
+    @Published private(set) var sceneMeteredISO: Float = 100
+    @Published private(set) var requiredNDStops: Float = 0
+    @Published private(set) var ndMatchState: NDMatchState = .notRequired
+    @Published private(set) var exposurePlan: NDExposurePlan?
 
     @Published var whiteBalanceMode: CSCameraControlMode = .auto {
         didSet { applyManualControls() }
@@ -88,10 +89,9 @@ final class CSCameraViewModel: ObservableObject {
     let cameraService: CSCameraVideoSessionServicing
 
     private let router: CSNavigationRouting
-    private var appliedShutter: Int = 50
-    private var appliedISO: Float = 100
     private var isSyncingSettings = false
     private var focusIndicatorTask: Task<Void, Never>?
+    private var meteringTask: Task<Void, Never>?
 
     init(
         cameraService: CSCameraVideoSessionServicing,
@@ -99,10 +99,6 @@ final class CSCameraViewModel: ObservableObject {
     ) {
         self.cameraService = cameraService
         self.router = router
-    }
-
-    var isExposureManual: Bool {
-        exposureMode == .manual
     }
 
     var isWhiteBalanceManual: Bool {
@@ -136,6 +132,7 @@ final class CSCameraViewModel: ObservableObject {
     func stopCamera() {
         focusIndicatorTask?.cancel()
         focusIndicatorPoint = nil
+        stopMeteringUpdates()
         cameraService.stop()
     }
 
@@ -171,30 +168,107 @@ final class CSCameraViewModel: ObservableObject {
     }
 
     func applySetup(_ setup: CineSetSetup) {
+        isSyncingSettings = true
         if let filter = setup.ndFilter {
             selectedNDFilter = filter
         }
         selectedFPS = setup.fps
         selectedShutter = setup.shutter
         selectedISO = setup.iso
+        isSyncingSettings = false
+        updateExposurePlan()
     }
 
-    private func applyNDSimulation() {
-        guard !isSyncingSettings else { return }
+    var ndFilterDisplayValue: String {
+        let selected = selectedNDFilter.hudTitle
+        guard areCapabilitiesLoaded else { return selected }
 
-        let result = NDExposureSimulator.simulate(
-            baseShutter: selectedShutter,
-            baseISO: selectedISO,
-            ndStops: selectedNDFilter.stops,
-            shutterOptions: shutterOptions,
-            isoOptions: isoOptions
+        switch ndMatchState {
+        case .notRequired:
+            return selected
+        case .insufficient(let missingStops):
+            return "\(selected) (-\(formattedNDStops(missingStops)))"
+        case .matched:
+            return "\(selected) ✓"
+        case .stronger(let extraStops):
+            return "\(selected) (+\(formattedNDStops(extraStops)))"
+        }
+    }
+
+    var ndMatchStatusText: String {
+        guard areCapabilitiesLoaded else { return "Reading scene…" }
+
+        switch ndMatchState {
+        case .notRequired:
+            return "No ND required"
+        case .insufficient(let missingStops):
+            return "Short \(formattedNDStops(missingStops)) stops · need \(formattedNDStops(requiredNDStops))"
+        case .matched:
+            return "Matched · need \(formattedNDStops(requiredNDStops))"
+        case .stronger(let extraStops):
+            return "+\(formattedNDStops(extraStops)) stops headroom"
+        }
+    }
+
+    /// Subtle cosmetic preview shift from residual ND stops (required − selected).
+    var ndPreviewBrightness: Double {
+        guard let exposurePlan else { return 0 }
+        return NDExposurePlanner.previewBrightnessAdjustment(
+            requiredNDStops: exposurePlan.requiredNDStops,
+            selectedNDStops: exposurePlan.selectedNDStops
+        )
+    }
+
+    private func formattedNDStops(_ stops: Float) -> String {
+        abs(stops.rounded() - stops) < 0.05
+            ? String(format: "%.0f", stops)
+            : String(format: "%.1f", stops)
+    }
+
+    private func updateExposurePlan() {
+        guard areCapabilitiesLoaded else { return }
+
+        let plan = NDExposurePlanner.plan(
+            meteredShutter: sceneMeteredShutter,
+            meteredISO: sceneMeteredISO,
+            targetShutter: selectedShutter,
+            targetISO: selectedISO,
+            selectedNDStops: selectedNDFilter.stops
         )
 
-        appliedShutter = result.appliedShutter
-        appliedISO = result.appliedISO
-        ndOverlayOpacity = result.overlayOpacity
+        exposurePlan = plan
+        requiredNDStops = plan.requiredNDStops
+        ndMatchState = plan.matchState
+    }
 
-        applyManualControls()
+    private func refreshMeteredExposure() {
+        cameraService.readMeteredExposure { [weak self] shutter, iso in
+            guard let self else { return }
+            guard shutter > 0, iso.isFinite, iso > 0 else { return }
+
+            let shutterChanged = shutter != sceneMeteredShutter
+            let isoChanged = abs(iso - sceneMeteredISO) > 0.5
+            guard shutterChanged || isoChanged else { return }
+
+            sceneMeteredShutter = shutter
+            sceneMeteredISO = iso
+            updateExposurePlan()
+        }
+    }
+
+    private func startMeteringUpdates() {
+        stopMeteringUpdates()
+        meteringTask = Task { [weak self] in
+            while !Task.isCancelled {
+                self?.refreshMeteredExposure()
+                try? await Task.sleep(for: .milliseconds(500))
+            }
+        }
+    }
+
+    private func stopMeteringUpdates() {
+        meteringTask?.cancel()
+        meteringTask = nil
     }
 
     private func applyManualControls() {
@@ -202,14 +276,15 @@ final class CSCameraViewModel: ObservableObject {
         cameraService.updateManualControls(currentSettings)
     }
 
+    /// Preview always uses auto exposure. Target shutter/ISO and ND are planning values only.
     private var currentSettings: CSCameraAppliedSettings {
         CSCameraAppliedSettings(
             resolution: selectedResolution,
             fps: selectedFPS,
-            shutter: appliedShutter,
-            iso: appliedISO,
+            shutter: sceneMeteredShutter,
+            iso: sceneMeteredISO,
             manualControls: CSCameraManualControls(
-                exposureMode: exposureMode,
+                exposureMode: .auto,
                 whiteBalanceMode: whiteBalanceMode,
                 whiteBalanceTemperature: whiteBalanceTemperature,
                 whiteBalanceTint: whiteBalanceTint,
@@ -232,13 +307,9 @@ final class CSCameraViewModel: ObservableObject {
 
         selectedResolution = applied.resolution
         selectedFPS = applied.fps
+        sceneMeteredShutter = applied.shutter
+        sceneMeteredISO = applied.iso
 
-        if selectedNDFilter.stops == 0 {
-            selectedShutter = applied.shutter
-            selectedISO = applied.iso
-        }
-
-        exposureMode = applied.manualControls.exposureMode
         whiteBalanceMode = applied.manualControls.whiteBalanceMode
         whiteBalanceTemperature = applied.manualControls.whiteBalanceTemperature
         whiteBalanceTint = applied.manualControls.whiteBalanceTint
@@ -247,6 +318,10 @@ final class CSCameraViewModel: ObservableObject {
         focusMode = applied.manualControls.focusMode
 
         isSyncingSettings = false
-        applyNDSimulation()
+
+        applyManualControls()
+        updateExposurePlan()
+        startMeteringUpdates()
+        refreshMeteredExposure()
     }
 }

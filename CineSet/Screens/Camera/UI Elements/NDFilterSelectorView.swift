@@ -52,7 +52,20 @@ struct NDFilterSelectorView: View {
                             .frame(height: 40)
                             .background {
                                 RoundedRectangle(cornerRadius: 8)
-                                    .fill(.orange.opacity(0.6))
+                                    .fill(
+                                        selectedFilter == filter
+                                            ? .orange.opacity(0.9)
+                                            : .black.opacity(0.4)
+                                    )
+                            }
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(
+                                        selectedFilter == filter
+                                            ? .white.opacity(0.8)
+                                            : .clear,
+                                        lineWidth: 1
+                                    )
                             }
                     }
                     .id(filter.id)
@@ -68,17 +81,20 @@ struct NDFilterSelectorView: View {
             centeredID = selectedFilter.id
             haptic.prepare()
         }
-        .onChange(of: centeredID) { old, new in
-            guard new != old, new != nil else { return }
+        .onChange(of: centeredID) { oldID, newID in
+            guard
+                newID != oldID,
+                let newID,
+                let filter = filters.first(where: { $0.id == newID })
+            else {
+                return
+            }
+
+            guard selectedFilter != filter else { return }
+
+            selectedFilter = filter
             haptic.impactOccurred()
             haptic.prepare()
-        }
-        .onScrollPhaseChange { _, phase in
-            guard phase == .idle,
-                  let id = centeredID,
-                  let filter = filters.first(where: { $0.id == id })
-            else { return }
-            selectedFilter = filter
         }
         .onChange(of: selectedFilter) { _, newFilter in
             if centeredID != newFilter.id {

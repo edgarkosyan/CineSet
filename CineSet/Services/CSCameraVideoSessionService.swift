@@ -41,6 +41,7 @@ protocol CSCameraVideoSessionServicing {
     func updateFPS(_ fps: Int, resolution: CSCameraResolution)
     func updateManualControls(_ settings: CSCameraAppliedSettings)
     func focus(at devicePoint: CGPoint, settings: CSCameraAppliedSettings)
+    func readMeteredExposure(completion: (@MainActor (Int, Float) -> Void)?)
 }
 
 final class CSCameraVideoSessionService: NSObject, CSCameraVideoSessionServicing {
@@ -137,6 +138,16 @@ final class CSCameraVideoSessionService: NSObject, CSCameraVideoSessionServicing
         }
     }
 
+    func readMeteredExposure(completion: (@MainActor (Int, Float) -> Void)? = nil) {
+        sessionQueue.async { [weak self] in
+            guard let self, let device = self.videoDevice else { return }
+
+            let shutter = Self.shutterDenominator(from: device.exposureDuration)
+            let iso = device.iso
+            self.deliverMeteredExposure(completion, shutter: shutter, iso: iso)
+        }
+    }
+
     // MARK: - Session setup
 
     private func configureSessionIfNeeded() {
@@ -181,6 +192,23 @@ final class CSCameraVideoSessionService: NSObject, CSCameraVideoSessionServicing
         Task { @MainActor in
             completion(capabilities, applied)
         }
+    }
+
+    private func deliverMeteredExposure(
+        _ completion: (@MainActor (Int, Float) -> Void)?,
+        shutter: Int,
+        iso: Float
+    ) {
+        guard let completion else { return }
+
+        Task { @MainActor in
+            completion(shutter, iso)
+        }
+    }
+
+    static func shutterDenominator(from duration: CMTime) -> Int {
+        guard duration.value > 0 else { return 0 }
+        return max(Int(round(Double(duration.timescale) / Double(duration.value))), 1)
     }
 
     // MARK: - Resolve + apply
@@ -278,15 +306,6 @@ final class CSCameraVideoSessionService: NSObject, CSCameraVideoSessionServicing
 
             if device.isFocusModeSupported(.autoFocus) {
                 device.focusMode = .autoFocus
-            }
-
-            if settings.manualControls.exposureMode == .auto {
-                if device.isExposurePointOfInterestSupported {
-                    device.exposurePointOfInterest = point
-                }
-                if device.isExposureModeSupported(.continuousAutoExposure) {
-                    device.exposureMode = .continuousAutoExposure
-                }
             }
 
             device.unlockForConfiguration()
