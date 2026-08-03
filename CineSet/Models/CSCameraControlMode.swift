@@ -12,13 +12,6 @@ enum CSCameraControlMode: String, CaseIterable, Identifiable, Sendable {
     case manual
 
     var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .auto: "Auto"
-        case .manual: "Manual"
-        }
-    }
 }
 
 struct CSCameraManualControls: Sendable, Equatable {

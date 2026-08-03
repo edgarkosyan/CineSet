@@ -55,6 +55,7 @@ final class AppContainer: CSNavigationRouting {
 
         activeCameraViewModel = CSCameraViewModel(
             cameraService: makeCameraService(),
+            videoAccess: makeVideoAccessService(),
             router: self
         )
     }
@@ -62,14 +63,21 @@ final class AppContainer: CSNavigationRouting {
     private func makeCameraService() -> CSCameraVideoSessionServicing {
         CSCameraVideoSessionService()
     }
+
+    private func makeVideoAccessService() -> CSCameraVideoAccessServicing {
+        CSCameraVideoAccessService()
+    }
 }
 
 #if DEBUG
 extension AppContainer {
     static func previewCameraViewModel() -> CSCameraViewModel {
         let container = AppContainer()
-        container.showCamera()
-        return container.requireCameraViewModel()
+        return CSCameraViewModel(
+            cameraService: CSCameraVideoSessionService(),
+            videoAccess: PreviewCameraVideoAccess(),
+            router: container
+        )
     }
 }
 #endif

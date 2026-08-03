@@ -5,151 +5,71 @@
 //  Created by edgar kosyan on 10/06/2026.
 //
 
-import AVFoundation
 import Combine
 import Foundation
 
-enum CSCameraAuthorizationState {
-    case notDetermined
-    case authorized
-    case denied
-}
-
 @MainActor
 final class CSCameraViewModel: ObservableObject {
-    @Published var selectedResolution: CSCameraResolution = .p1080 {
-        didSet {
-            guard !isSyncingSettings else { return }
-            cameraService.updateResolution(selectedResolution, settings: currentSettings) { [weak self] capabilities, applied in
-                self?.applyCapabilities(capabilities, applied: applied)
-            }
-        }
-    }
+    @Published private(set) var viewData: CSCameraViewData = .initial
 
-    @Published var selectedFPS: Int = 25 {
-        didSet {
-            guard !isSyncingSettings else { return }
-            cameraService.updateFPS(selectedFPS, resolution: selectedResolution)
-        }
-    }
-
-    @Published var selectedShutter: Int = 50 {
-        didSet { applyNDSimulation() }
-    }
-
-    @Published var selectedISO: Float = 100 {
-        didSet { applyNDSimulation() }
-    }
-
-    @Published var selectedNDFilter: NDFilter = .clear {
-        didSet { applyNDSimulation() }
-    }
-
-    @Published private(set) var ndOverlayOpacity: Double = 0
-
-    @Published var exposureMode: CSCameraControlMode = .manual {
-        didSet { applyManualControls() }
-    }
-
-    @Published var whiteBalanceMode: CSCameraControlMode = .auto {
-        didSet { applyManualControls() }
-    }
-
-    @Published var whiteBalanceTemperature: Float = 5_500 {
-        didSet { applyManualControls() }
-    }
-
-    @Published var whiteBalanceTint: Float = 0 {
-        didSet { applyManualControls() }
-    }
-
-    @Published var isHDRAutoAdjustmentEnabled: Bool = false {
-        didSet { applyManualControls() }
-    }
-
-    @Published var isLowLightBoostEnabled: Bool = false {
-        didSet { applyManualControls() }
-    }
-
-    @Published var focusMode: CSCameraControlMode = .auto {
-        didSet { applyManualControls() }
-    }
-
-    @Published private(set) var authorizationState: CSCameraAuthorizationState = .notDetermined
-    @Published private(set) var resolutionOptions: [CSCameraResolution] = []
-    @Published private(set) var fpsOptions: [Int] = []
-    @Published private(set) var shutterOptions: [Int] = []
-    @Published private(set) var isoOptions: [Float] = []
-    @Published private(set) var supportsLowLightBoost = false
-    @Published private(set) var areCapabilitiesLoaded = false
-    @Published var focusIndicatorPoint: CGPoint?
-    @Published var isSettingsPresented = false
-
+    let labels = TDCameraLabels.localized
     let cameraService: CSCameraVideoSessionServicing
 
     private let router: CSNavigationRouting
-    private var appliedShutter: Int = 50
-    private var appliedISO: Float = 100
-    private var isSyncingSettings = false
+    private let videoAccess: CSCameraVideoAccessServicing
+    private let settingsEngine = CSCameraSettingsEngine()
     private var focusIndicatorTask: Task<Void, Never>?
 
     init(
         cameraService: CSCameraVideoSessionServicing,
+        videoAccess: CSCameraVideoAccessServicing,
         router: CSNavigationRouting
     ) {
         self.cameraService = cameraService
+        self.videoAccess = videoAccess
         self.router = router
     }
 
     var isExposureManual: Bool {
-        exposureMode == .manual
+        viewData.user.manualControls.exposureMode == .manual
     }
 
     var isWhiteBalanceManual: Bool {
-        whiteBalanceMode == .manual
+        viewData.user.manualControls.whiteBalanceMode == .manual
     }
 
     func prepareCamera() async {
-        switch AVCaptureDevice.authorizationStatus(for: .video) {
-        case .authorized:
-            authorizationState = .authorized
+        let authorization = await videoAccess.resolveVideoAccess()
+        viewData.chrome.authorization = authorization
+        if authorization == .authorized {
             startCamera()
-        case .notDetermined:
-            let granted = await AVCaptureDevice.requestAccess(for: .video)
-            authorizationState = granted ? .authorized : .denied
-            if granted {
-                startCamera()
-            }
-        case .denied, .restricted:
-            authorizationState = .denied
-        @unknown default:
-            authorizationState = .denied
         }
     }
 
     func startCamera() {
-        cameraService.configure(applying: currentSettings) { [weak self] capabilities, applied in
-            self?.applyCapabilities(capabilities, applied: applied)
+        let settings = settingsEngine.appliedSettings(from: viewData)
+        cameraService.configure(applying: settings) { [weak self] capabilities, applied in
+            self?.handleCapabilities(capabilities, applied: applied)
         }
     }
 
     func stopCamera() {
         focusIndicatorTask?.cancel()
-        focusIndicatorPoint = nil
+        viewData.chrome.focusIndicatorPoint = nil
         cameraService.stop()
     }
 
     func focus(at viewPoint: CGPoint, devicePoint: CGPoint) {
-        guard authorizationState == .authorized else { return }
+        guard viewData.chrome.authorization == .authorized else { return }
 
-        focusIndicatorPoint = viewPoint
-        cameraService.focus(at: devicePoint, settings: currentSettings)
+        viewData.chrome.focusIndicatorPoint = viewPoint
+        cameraService.focus(at: devicePoint, settings: settingsEngine.appliedSettings(from: viewData))
 
         focusIndicatorTask?.cancel()
         focusIndicatorTask = Task {
             try? await Task.sleep(for: .seconds(1.5))
             guard !Task.isCancelled else { return }
-            focusIndicatorPoint = nil
+            viewData.chrome.focusIndicatorPoint = nil
         }
     }
 
@@ -158,77 +78,40 @@ final class CSCameraViewModel: ObservableObject {
     }
 
     func didTapCameraSettings() {
-        isSettingsPresented = true
+        viewData.chrome.isSettingsPresented = true
     }
 
-    private func applyNDSimulation() {
-        guard !isSyncingSettings else { return }
-
-        let result = NDExposureSimulator.simulate(
-            baseShutter: selectedShutter,
-            baseISO: selectedISO,
-            ndStops: selectedNDFilter.stops,
-            shutterOptions: shutterOptions,
-            isoOptions: isoOptions
-        )
-
-        appliedShutter = result.appliedShutter
-        appliedISO = result.appliedISO
-        ndOverlayOpacity = result.overlayOpacity
-
-        applyManualControls()
+    func setSettingsPresented(_ isPresented: Bool) {
+        viewData.chrome.isSettingsPresented = isPresented
     }
 
-    private func applyManualControls() {
-        guard !isSyncingSettings else { return }
-        cameraService.updateManualControls(currentSettings)
+    func send(_ change: CSCameraSettingsChange) {
+        let effects = settingsEngine.applying(change, to: &viewData)
+        run(effects)
     }
 
-    private var currentSettings: CSCameraAppliedSettings {
-        CSCameraAppliedSettings(
-            resolution: selectedResolution,
-            fps: selectedFPS,
-            shutter: appliedShutter,
-            iso: appliedISO,
-            manualControls: CSCameraManualControls(
-                exposureMode: exposureMode,
-                whiteBalanceMode: whiteBalanceMode,
-                whiteBalanceTemperature: whiteBalanceTemperature,
-                whiteBalanceTint: whiteBalanceTint,
-                isHDRAutoAdjustmentEnabled: isHDRAutoAdjustmentEnabled,
-                isLowLightBoostEnabled: isLowLightBoostEnabled,
-                focusMode: focusMode
-            )
-        )
+    private func handleCapabilities(
+        _ capabilities: CSCameraCapabilities,
+        applied: CSCameraAppliedSettings
+    ) {
+        settingsEngine.applyingCapabilities(capabilities, applied: applied, to: &viewData)
+        run([.updateManualControls])
     }
 
-    private func applyCapabilities(_ capabilities: CSCameraCapabilities, applied: CSCameraAppliedSettings) {
-        isSyncingSettings = true
+    private func run(_ effects: [CSCameraSideEffect]) {
+        let settings = settingsEngine.appliedSettings(from: viewData)
 
-        resolutionOptions = capabilities.resolutionOptions
-        fpsOptions = capabilities.fpsOptions
-        shutterOptions = capabilities.shutterOptions
-        isoOptions = capabilities.isoOptions
-        supportsLowLightBoost = capabilities.supportsLowLightBoost
-        areCapabilitiesLoaded = true
-
-        selectedResolution = applied.resolution
-        selectedFPS = applied.fps
-
-        if selectedNDFilter.stops == 0 {
-            selectedShutter = applied.shutter
-            selectedISO = applied.iso
+        for effect in effects {
+            switch effect {
+            case .updateResolution:
+                cameraService.updateResolution(viewData.user.resolution, settings: settings) { [weak self] capabilities, applied in
+                    self?.handleCapabilities(capabilities, applied: applied)
+                }
+            case .updateFPS:
+                cameraService.updateFPS(viewData.user.fps, resolution: viewData.user.resolution)
+            case .updateManualControls:
+                cameraService.updateManualControls(settings)
+            }
         }
-
-        exposureMode = applied.manualControls.exposureMode
-        whiteBalanceMode = applied.manualControls.whiteBalanceMode
-        whiteBalanceTemperature = applied.manualControls.whiteBalanceTemperature
-        whiteBalanceTint = applied.manualControls.whiteBalanceTint
-        isHDRAutoAdjustmentEnabled = applied.manualControls.isHDRAutoAdjustmentEnabled
-        isLowLightBoostEnabled = applied.manualControls.isLowLightBoostEnabled
-        focusMode = applied.manualControls.focusMode
-
-        isSyncingSettings = false
-        applyNDSimulation()
     }
 }
